@@ -113,7 +113,6 @@ def load_knowledge_base() -> dict:
         try:
             with open(KB_FILE, "r") as f:
                 saved = json.load(f)
-            # merge default + saved (saved overrides default)
             merged = {**DEFAULT_KB, **saved}
             print(f"KB loaded: {len(merged)} entries ({len(saved)} from file)")
             return merged
@@ -123,7 +122,6 @@ def load_knowledge_base() -> dict:
 
 # ── Save KB to JSON ───────────────────────────────
 def save_knowledge_base(kb: dict):
-    # only save non-default entries to file
     default_keys = set(DEFAULT_KB.keys())
     custom_entries = {k: v for k, v in kb.items() if k not in default_keys}
     with open(KB_FILE, "w") as f:
@@ -178,14 +176,12 @@ def search_knowledge_base(issue: str) -> str:
     issue_lower = issue.lower()
     print(f"DEBUG KB search: '{issue_lower}'")
 
-    # search keyword map
     for keyword, kb_key in KEYWORD_MAP.items():
         if keyword in issue_lower:
             entry = KNOWLEDGE_BASE.get(kb_key)
             if entry:
                 return _format_entry(entry)
 
-    # search custom entries by topic keyword
     for kb_key, entry in KNOWLEDGE_BASE.items():
         topic = entry.get("topic", "").lower()
         if any(word in topic for word in issue_lower.split()):
@@ -200,26 +196,32 @@ INSTRUCTION: Tell user you don't have information. Ask them to provide solution 
 def _format_entry(entry: dict) -> str:
     entry_type = entry.get("type", "UNKNOWN")
     topic      = entry.get("topic", "")
+    note       = entry.get("note", "")
+
+    # show note prominently so agent always reads it
+    note_section = f"\n⚠️  NOTE: {note}" if note else ""
 
     if entry_type == "INFORMATION_ONLY":
         info = entry.get("info", "")
         return f"""TYPE: INFORMATION_ONLY
-TOPIC: {topic}
+TOPIC: {topic}{note_section}
 
 {info}
 
-INSTRUCTION: Return this exactly. Tell user say 'ok fix it' to execute."""
+INSTRUCTION: Return this exactly. Tell user say 'ok fix it' to execute.
+{f"IMPORTANT: {note}" if note else ""}"""
 
     elif entry_type == "COMMAND_TASK":
         actions = entry.get("actions", [])
         steps   = "\n".join([f"Step {i+1}: {a}" for i, a in enumerate(actions)])
         return f"""TYPE: COMMAND_TASK
-TOPIC: {topic}
+TOPIC: {topic}{note_section}
 
 ACTION PLAN:
 {steps}
 
-INSTRUCTION: Print plan first, then execute each step with run_command."""
+INSTRUCTION: Print plan first, then execute each step with run_command.
+{f"IMPORTANT: {note}" if note else ""}"""
 
     return f"TYPE: UNKNOWN\nTOPIC: {topic}"
 
@@ -232,62 +234,69 @@ def save_knowledge(
     keyword: str,
     topic: str,
     entry_type: str,
-    actions_or_info: str
+    actions_or_info: str,
+    note: str = ""
 ) -> str:
     """
-    Save new knowledge to the knowledge base after human fixes an issue.
+    Save or update knowledge in the knowledge base.
 
     Use this tool when:
     - User says 'save this solution'
     - User says 'add this to knowledge base'
     - User says 'remember this fix'
-    - Issue was fixed manually and should be remembered
+    - User says 'ignore this IP', 'decommissioned', 'add a note'
+      → pass the note in the note parameter
 
     Parameters:
-    - keyword       : short keyword to trigger this entry (e.g. 'nginx_down')
-    - topic         : human readable topic (e.g. 'Fix Nginx Service Down')
-    - entry_type    : 'COMMAND_TASK' or 'INFORMATION_ONLY'
-    - actions_or_info: for COMMAND_TASK: commands separated by newline
-                       for INFORMATION_ONLY: the knowledge text
+    - keyword        : short keyword to trigger this entry (e.g. 'nginx_down')
+    - topic          : human readable topic
+    - entry_type     : 'COMMAND_TASK' or 'INFORMATION_ONLY'
+    - actions_or_info: commands (COMMAND_TASK) or info text (INFORMATION_ONLY)
+    - note           : optional note e.g. 'IGNORE 192.168.1.100 — decommissioned'
     """
     global KNOWLEDGE_BASE
 
     keyword_clean = keyword.lower().replace(" ", "_")
+
+    # if entry already exists, preserve existing actions/info and just update note
+    existing = KNOWLEDGE_BASE.get(keyword_clean, {})
 
     if entry_type == "COMMAND_TASK":
         actions = [
             a.strip()
             for a in actions_or_info.strip().splitlines()
             if a.strip()
-        ]
+        ] or existing.get("actions", [])
+
         new_entry = {
             "type":    "COMMAND_TASK",
             "topic":   topic,
             "actions": actions
         }
-        # add to keyword map
         KEYWORD_MAP[keyword.lower()] = keyword_clean
 
     else:
         new_entry = {
             "type": "INFORMATION_ONLY",
             "topic": topic,
-            "info":  actions_or_info
+            "info":  actions_or_info or existing.get("info", "")
         }
         KEYWORD_MAP[keyword.lower()] = keyword_clean
 
-    # update in-memory KB
-    KNOWLEDGE_BASE[keyword_clean] = new_entry
+    # attach note if provided
+    if note:
+        new_entry["note"] = note
 
-    # persist to disk
+    KNOWLEDGE_BASE[keyword_clean] = new_entry
     save_knowledge_base(KNOWLEDGE_BASE)
 
-    print(f"KB updated: '{keyword_clean}' → {topic}")
+    print(f"KB updated: '{keyword_clean}' → {topic} | note: {note}")
     return f"""Knowledge saved successfully!
 
 Keyword : {keyword_clean}
 Topic   : {topic}
 Type    : {entry_type}
+Note    : {note if note else 'none'}
 
 This will be used automatically next time a similar issue occurs."""
 
@@ -320,10 +329,6 @@ def ssh_command(host: str, command: str) -> str:
     """
     Execute a command on a REMOTE machine via SSH.
     Use when user mentions a specific IP or server name.
-
-    Examples:
-    - 'check disk on 192.168.1.100'
-    - 'restart nginx on prod-server'
     """
     print(f"DEBUG ssh_command {host}: '{command}'")
     try:
