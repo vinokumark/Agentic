@@ -380,7 +380,11 @@ async def watcher_main():
 # FOR langgraph dev — NO checkpointer
 # langgraph dev handles persistence automatically
 # ════════════════════════════════════════════════
-app = asyncio.run(build_graph(checkpointer=None))
+async def create_app():
+    async with AsyncSqliteSaver.from_conn_string("sessions.db") as cp:
+        return await build_graph(checkpointer=cp)
+
+app = asyncio.run(create_app())
 
 
 if __name__ == "__main__":
