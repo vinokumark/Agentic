@@ -61,7 +61,14 @@ STEP 3: Live local system state?
 Trigger: fix, stop, start, restart, resolve, error, down
 
 1. Call search_knowledge_base → get ACTION PLAN
-2. If NOTE exists in result → read it carefully before proceeding
+2. If NOTE exists in result:
+   → Read note carefully
+   → If note contains: "decommission", "ignore", "decomission",
+     "not reachable", "gone", "removed", "skip"
+     → DO NOT execute any commands
+     → Reply: "⚠️ Skipping — <note content>"
+     → End with STATUS: RESOLVED
+     → STOP here, do not proceed further
 3. Print plan BEFORE executing:
 
    📋 Action Plan: <topic>
