@@ -17,7 +17,6 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph_sdk import get_client
 
 load_dotenv()
@@ -27,7 +26,6 @@ INCIDENTS_DIR  = Path("incidents")
 PROCESSED_DIR  = Path("incidents/processed")
 FAILED_DIR     = Path("incidents/failed")
 WATCH_INTERVAL = 60
-SESSIONS_DB    = "sessions.db"
 
 INCIDENTS_DIR.mkdir(exist_ok=True)
 PROCESSED_DIR.mkdir(exist_ok=True)
@@ -124,13 +122,10 @@ Trigger: "save this solution", "add to knowledge base",
    - solution : commands or info that worked
 2. Call save_knowledge tool
 3. Confirm: "Saved! Will auto-resolve next time."
-                              
+
 ── MODE 6: SESSION RESUME ────────────────────────
 Trigger: user pastes a UUID like xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
          or says "session", "thread id", "incident id", "resume"
-
-This means the user received a failure email and wants to
-review what the agent tried for that incident.
 
 Steps:
 1. Acknowledge the session ID if available
@@ -138,7 +133,7 @@ Steps:
 3. Tell user you can see the full incident history
 4. Ask: "What would you like me to try next to fix this issue?"
 5. Wait for their instructions
-6.. Execute their instructions using run_command or ssh_command
+6. Execute their instructions using run_command or ssh_command
 7. After fix: ask "Should I save this solution to the knowledge base?"
 8. If yes: call save_knowledge tool with the solution
 
@@ -179,15 +174,15 @@ def should_continue(state: AgentState):
 
 
 # ── Core Graph Builder ────────────────────────────
-async def build_graph(checkpointer=None):
-    client = MultiServerMCPClient({
+async def build_graph():
+    mcp_client = MultiServerMCPClient({
         "windows": {
             "url": "http://localhost:8000/sse",
             "transport": "sse",
         }
     })
 
-    tools = await client.get_tools()
+    tools = await mcp_client.get_tools()
     print(f"Tools loaded: {[t.name for t in tools]}")
 
     model_with_tools = model.bind_tools(tools)
@@ -204,10 +199,7 @@ async def build_graph(checkpointer=None):
     )
     graph.add_edge("tools", "llm")
 
-    # ── checkpointer optional ─────────────────────
-    # if checkpointer:
-    #     return graph.compile(checkpointer=checkpointer)
-    return graph.compile()      # ← no checkpointer for langgraph dev
+    return graph.compile()  # LangGraph API handles persistence
 
 
 # ════════════════════════════════════════════════
@@ -262,12 +254,10 @@ def parse_incident(file_path: Path) -> dict:
 # ════════════════════════════════════════════════
 # PROCESS ONE INCIDENT
 # ════════════════════════════════════════════════
-async def process_incident(agent, incident_file: Path):
-    client = get_client(url="http://localhost:2024")
+async def process_incident(client, incident_file: Path):
     session_id = str(uuid.uuid4())
     incident   = parse_incident(incident_file)
     timestamp  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    await client.threads.create(thread_id=session_id)
 
     print(f"\n{'='*60}")
     print(f"AUTO INCIDENT : {incident_file.name}")
@@ -290,11 +280,19 @@ End with STATUS: RESOLVED or STATUS: NEEDS_HUMAN.
 """
 
     try:
-        result = await agent.ainvoke(
-            {"messages": [{"role": "user", "content": prompt}]},
-            config={"configurable": {"thread_id": session_id}}
+        # Create thread in LangGraph internal DB using session_id as thread_id
+        await client.threads.create(thread_id=session_id)
+
+        # Run agent via LangGraph API
+        await client.runs.create_and_wait(
+            thread_id=session_id,
+            assistant_id="windows_agent",
+            input={"messages": [{"role": "user", "content": prompt}]}
         )
-        final = result["messages"][-1].content
+
+        # Get final message from thread state
+        state = await client.threads.get_state(thread_id=session_id)
+        final = state["values"]["messages"][-1]["content"]
         print(f"\nAgent:\n{final}")
 
         if "STATUS: RESOLVED" in final:
@@ -337,12 +335,10 @@ What Was Tried:
 ──────────────────────────────────────────
 TO CONTINUE WITH THE AGENT:
 
-1. Open  : http://localhost:3000
-2. URL   : http://localhost:2024
-3. Graph : windows_agent
-4. Thread: {session_id}
+Click the link below to open full session history:
 
-Agent will show full history.
+http://localhost:3000/?apiUrl=http://localhost:2024&assistantId=windows_agent&threadId={session_id}
+
 Give manual instructions to fix.
 After fixing say: "issue fixed, save this solution"
 ──────────────────────────────────────────
@@ -357,15 +353,12 @@ After fixing say: "issue fixed, save this solution"
 
 
 # ════════════════════════════════════════════════
-# WATCHER LOOP — uses SQLite checkpointer
+# WATCHER LOOP — uses LangGraph API
 # ════════════════════════════════════════════════
 async def watcher_main():
     print(f"\n🔍 Watcher started — every {WATCH_INTERVAL}s")
-    # print(f"   Watching : {INCIDENTS_DIR.absolute()}")
-    # print(f"   Sessions : {SESSIONS_DB}\n")
+    print(f"   Watching : {INCIDENTS_DIR.absolute()}\n")
 
-    # async with AsyncSqliteSaver.from_conn_string(SESSIONS_DB) as checkpointer:
-    #     agent = await build_graph(checkpointer=checkpointer)
     client = get_client(url="http://localhost:2024")
     while True:
         files = [f for f in INCIDENTS_DIR.glob("*.txt") if f.is_file()]
@@ -379,10 +372,10 @@ async def watcher_main():
 
 
 # ════════════════════════════════════════════════
-# FOR langgraph dev — NO checkpointer
-# langgraph dev handles persistence automatically
+# FOR langgraph dev — no checkpointer needed
+# LangGraph API handles persistence automatically
 # ════════════════════════════════════════════════
-app = asyncio.run(build_graph(checkpointer=None))
+app = asyncio.run(build_graph())
 
 
 if __name__ == "__main__":
