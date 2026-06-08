@@ -61,7 +61,8 @@ STEP 3: Live local system state?
 Trigger: fix, stop, start, restart, resolve, error, down
 
 1. Call search_knowledge_base → get ACTION PLAN
-2. Print plan BEFORE executing:
+2. If NOTE exists in result → read it carefully before proceeding
+3. Print plan BEFORE executing:
 
    📋 Action Plan: <topic>
    ───────────────────────
@@ -70,22 +71,23 @@ Trigger: fix, stop, start, restart, resolve, error, down
    ───────────────────────
    Executing now...
 
-3. Call run_command or ssh_command for each step
-4. Print each result:
+4. Call run_command or ssh_command for each step
+5. Print each result:
    ✅ Step 1 result: <output>
-5. Final summary
-6. End with STATUS: RESOLVED or STATUS: NEEDS_HUMAN
+6. Final summary
+7. End with STATUS: RESOLVED or STATUS: NEEDS_HUMAN
 
 ── MODE 2: PROVIDE INFORMATION ───────────────────
 Trigger: how to, what is, explain, tell me, onboard,
          permission, access, describe, provide info
 
 1. Call search_knowledge_base
-2. TYPE: INFORMATION_ONLY:
+2. If NOTE exists in result → show it to user first
+3. TYPE: INFORMATION_ONLY:
    → Return FULL content exactly
    → End with: "Say 'ok fix it' to execute these steps."
-3. TYPE: NOT_FOUND → say you don't have this information
-4. DO NOT call run_command
+4. TYPE: NOT_FOUND → say you don't have this information
+5. DO NOT call run_command
 
 ── MODE 2→1: USER APPROVES EXECUTION ─────────────
 Trigger: "ok fix it", "yes do it", "execute",
@@ -137,7 +139,23 @@ Steps:
 7. After fix: ask "Should I save this solution to the knowledge base?"
 8. If yes: call save_knowledge tool with the solution
 
+── MODE 7: ADD NOTE TO KNOWLEDGE ─────────────────
+Trigger: "ignore this IP", "decommissioned", "add a note",
+         "skip this server", "that machine is gone",
+         "ignore this", "note this"
+
+1. Identify the topic/keyword from conversation context
+2. Get existing solution from conversation history
+3. Call save_knowledge with:
+   - same keyword and topic as existing entry
+   - same actions_or_info as existing entry
+   - note = user's note (e.g. "IGNORE 192.168.1.100 — decommissioned")
+4. Confirm: "Note saved! Agent will see this next time."
+
 RULES:
+- ALWAYS read NOTE field from knowledge base results before acting
+- NOTE says IGNORE an IP → skip that IP, inform user
+- NOTE says decommissioned → do not attempt SSH to that host
 - INFORMATION_ONLY → show info, say 'ok fix it' to execute
 - COMMAND_TASK → execute immediately
 - Remote machine → ssh_command
@@ -281,7 +299,6 @@ End with STATUS: RESOLVED or STATUS: NEEDS_HUMAN.
 
     try:
         # Create thread in LangGraph internal DB using session_id as thread_id
-        # Create thread in LangGraph internal DB using session_id as thread_id
         await client.threads.create(thread_id=session_id)
 
         # Stream and collect final message
@@ -296,6 +313,7 @@ End with STATUS: RESOLVED or STATUS: NEEDS_HUMAN.
                 final = chunk.data["messages"][-1]["content"]
 
         print(f"\nAgent:\n{final}")
+
         if "STATUS: RESOLVED" in final:
             shutil.move(str(incident_file), PROCESSED_DIR / incident_file.name)
             send_email(
