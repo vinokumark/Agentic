@@ -18,6 +18,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph_sdk import get_client
 
 load_dotenv()
 
@@ -204,8 +205,8 @@ async def build_graph(checkpointer=None):
     graph.add_edge("tools", "llm")
 
     # ── checkpointer optional ─────────────────────
-    if checkpointer:
-        return graph.compile(checkpointer=checkpointer)
+    # if checkpointer:
+    #     return graph.compile(checkpointer=checkpointer)
     return graph.compile()      # ← no checkpointer for langgraph dev
 
 
@@ -262,9 +263,11 @@ def parse_incident(file_path: Path) -> dict:
 # PROCESS ONE INCIDENT
 # ════════════════════════════════════════════════
 async def process_incident(agent, incident_file: Path):
+    client = get_client(url="http://localhost:2024")
     session_id = str(uuid.uuid4())
     incident   = parse_incident(incident_file)
     timestamp  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    await client.threads.create(thread_id=session_id)
 
     print(f"\n{'='*60}")
     print(f"AUTO INCIDENT : {incident_file.name}")
@@ -358,33 +361,28 @@ After fixing say: "issue fixed, save this solution"
 # ════════════════════════════════════════════════
 async def watcher_main():
     print(f"\n🔍 Watcher started — every {WATCH_INTERVAL}s")
-    print(f"   Watching : {INCIDENTS_DIR.absolute()}")
-    print(f"   Sessions : {SESSIONS_DB}\n")
+    # print(f"   Watching : {INCIDENTS_DIR.absolute()}")
+    # print(f"   Sessions : {SESSIONS_DB}\n")
 
-    async with AsyncSqliteSaver.from_conn_string(SESSIONS_DB) as checkpointer:
-        agent = await build_graph(checkpointer=checkpointer)
-
-        while True:
-            files = [f for f in INCIDENTS_DIR.glob("*.txt") if f.is_file()]
-            if files:
-                print(f"\n📂 {len(files)} incident(s) at {datetime.now().strftime('%H:%M:%S')}")
-                for f in files:
-                    await process_incident(agent, f)
-            else:
-                print(f"  ⏳ {datetime.now().strftime('%H:%M:%S')} — watching...")
-
-            await asyncio.sleep(WATCH_INTERVAL)
+    # async with AsyncSqliteSaver.from_conn_string(SESSIONS_DB) as checkpointer:
+    #     agent = await build_graph(checkpointer=checkpointer)
+    client = get_client(url="http://localhost:2024")
+    while True:
+        files = [f for f in INCIDENTS_DIR.glob("*.txt") if f.is_file()]
+        if files:
+            print(f"\n📂 {len(files)} incident(s) at {datetime.now().strftime('%H:%M:%S')}")
+            for f in files:
+                await process_incident(client, f)
+        else:
+            print(f"  ⏳ {datetime.now().strftime('%H:%M:%S')} — watching...")
+        await asyncio.sleep(WATCH_INTERVAL)
 
 
 # ════════════════════════════════════════════════
 # FOR langgraph dev — NO checkpointer
 # langgraph dev handles persistence automatically
 # ════════════════════════════════════════════════
-async def create_app():
-    async with AsyncSqliteSaver.from_conn_string("sessions.db") as cp:
-        return await build_graph(checkpointer=cp)
-
-app = asyncio.run(create_app())
+app = asyncio.run(build_graph(checkpointer=None))
 
 
 if __name__ == "__main__":
