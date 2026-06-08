@@ -160,9 +160,8 @@ Trigger: "ignore this IP", "decommissioned", "add a note",
 4. Confirm: "Note saved! Agent will see this next time."
 
 RULES:
-- ALWAYS read NOTE field from knowledge base results before acting
-- NOTE says IGNORE an IP → skip that IP, inform user
-- NOTE says decommissioned → do not attempt SSH to that host
+- If knowledge base NOTE contains "decommission", "ignore", "skip",
+  "not reachable", "gone" → STATUS: RESOLVED immediately, no execution
 - INFORMATION_ONLY → show info, say 'ok fix it' to execute
 - COMMAND_TASK → execute immediately
 - Remote machine → ssh_command
