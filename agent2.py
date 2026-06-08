@@ -281,20 +281,21 @@ End with STATUS: RESOLVED or STATUS: NEEDS_HUMAN.
 
     try:
         # Create thread in LangGraph internal DB using session_id as thread_id
+        # Create thread in LangGraph internal DB using session_id as thread_id
         await client.threads.create(thread_id=session_id)
 
-        # Run agent via LangGraph API
-        await client.runs.create_and_wait(
+        # Stream and collect final message
+        final = ""
+        async for chunk in client.runs.stream(
             thread_id=session_id,
             assistant_id="windows_agent",
-            input={"messages": [{"role": "user", "content": prompt}]}
-        )
+            input={"messages": [{"role": "user", "content": prompt}]},
+            stream_mode="values"
+        ):
+            if chunk.data and "messages" in chunk.data:
+                final = chunk.data["messages"][-1]["content"]
 
-        # Get final message from thread state
-        state = await client.threads.get_state(thread_id=session_id)
-        final = state["values"]["messages"][-1]["content"]
         print(f"\nAgent:\n{final}")
-
         if "STATUS: RESOLVED" in final:
             shutil.move(str(incident_file), PROCESSED_DIR / incident_file.name)
             send_email(
