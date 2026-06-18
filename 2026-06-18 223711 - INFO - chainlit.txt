@@ -1,0 +1,30 @@
+2026-06-18 22:37:11 - INFO - chainlit - Your app is available at http://localhost:8080
+[Chainlit] on_chat_start url_thread=''
+[Chainlit] on_chat_start url_thread=''
+2026-06-18 22:37:14 - WARNING - chainlit - Translated markdown file for en-US not found. Defaulting to chainlit.md.
+2026-06-18 22:37:14 - INFO - httpx - HTTP Request: POST http://localhost:2024/threads "HTTP/1.1 200 OK"
+[Chainlit] new thread: a990562f-3474-471b-bea3-6c6104e70632
+2026-06-18 22:37:14 - INFO - httpx - HTTP Request: POST http://localhost:2024/threads "HTTP/1.1 200 OK"
+[Chainlit] new thread: 1a358f08-0c75-4dbb-be46-2ec0263a1c6a
+[Chainlit] on_chat_start url_thread=''
+2026-06-18 22:37:15 - INFO - httpx - HTTP Request: POST http://localhost:2024/threads "HTTP/1.1 200 OK"
+[Chainlit] new thread: 8910dfa6-2818-43b3-b150-119fdb6c478d
+2026-06-18 22:37:36 - WARNING - chainlit - Translated markdown file for en-US not found. Defaulting to chainlit.md.
+[Chainlit] on_chat_start url_thread=''
+2026-06-18 22:37:38 - INFO - httpx - HTTP Request: POST http://localhost:2024/threads "HTTP/1.1 200 OK"
+[Chainlit] new thread: 5eefac4c-db8a-468f-84a3-9938b42351cf
+2026-06-18 22:38:24 - WARNING - chainlit - Translated markdown file for en-US not found. Defaulting to chainlit.md.
+[Chainlit] on_chat_start url_thread=''
+2026-06-18 22:38:25 - INFO - httpx - HTTP Request: POST http://localhost:2024/threads "HTTP/1.1 200 OK"
+[Chainlit] new thread: b5650dd3-7ed1-41ba-83c2-b040e6be999e
+2026-06-18 22:38:38 - WARNING - chainlit - Translated markdown file for en-US not found. Defaulting to chainlit.md.
+[Chainlit] on_chat_start url_thread=''
+2026-06-18 22:38:39 - INFO - httpx - HTTP Request: POST http://localhost:2024/threads "HTTP/1.1 200 OK"
+[Chainlit] new thread: 3396ef8d-bf7e-4663-9e37-0bba27a0a205
+[Chainlit] UUID pasted: 5728773a-55b6-496c-96c0-400888502aca
+2026-06-18 22:39:38 - INFO - httpx - HTTP Request: GET http://localhost:2024/threads/5728773a-55b6-496c-96c0-400888502aca/state?subgraphs=false "HTTP/1.1 200 OK"
+[Chainlit] state type       : <class 'dict'>
+[Chainlit] state keys       : N/A
+[Chainlit] state.values type: <class 'builtin_function_or_method'>
+[Chainlit] state.values peek: <built-in method values of dict object at 0x000001E26C81B200>
+[Chainlit] messages count   : 0
